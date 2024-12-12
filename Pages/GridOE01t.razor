@@ -1,0 +1,234 @@
+﻿@page "/gridoe1"
+@inject HttpClient Http
+@using BlazorOE01.Common.OE01
+@using BlazorOE01.Pages
+@using System.IO
+@using System.Dynamic
+
+@using Telerik.DataSource;
+
+<h3>Invoice</h3>
+
+<div class="container-fluid my-3 py-3">
+    <div class="row">
+        <div class="col-12">
+            <div class="card mt-4" id="basic-info">
+                <div class="card-body">
+                    <!-- Input and Action Buttons Row -->
+                    <div class="row align-items-center">
+                        <!-- Search Input -->
+                        <div class="col-sm-6 mb-3">
+                            <div class="input-group input-group-static">
+                                <label for="searchInput"></label>
+                                <input type="text" id="searchInput" class="form-control" placeholder="Buscar..." @bind="SearchText" @oninput="OnSearchInputChanged" style="max-width: 200px;" /> <!-- Ancho específico --> 
+                             
+
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="col-sm-6 d-flex justify-content-end flex-wrap gap-2">
+                            <button class="btn btn-primary" type="button" @onclick="@MostrarDatos">Ver Datos</button>
+                            <GridCommandButton Command="ExcelExport" Icon="@SvgIcon.FileExcel" class="btn btn-success">Exportar a Excel</GridCommandButton>
+                            <TelerikButton OnClick="@(async () => await GridRef.SaveAsExcelFileAsync())" class="btn btn-outline-success">Descargar Excel</TelerikButton>
+                        </div>
+                    </div>
+
+                    <!-- Responsive Grid -->
+                    <div class="mt-4">
+                        <TelerikGrid @ref="@GridRef"
+                                     Data="@FilteredInvoices"
+                                     OnDelete="@DeleteHandler"
+                                     OnUpdate="@UpdateHandler"
+                                     OnCreate="@CreateHandler"
+                                     ConfirmDelete="true"
+                                     Groupable="true"
+                                     FilterMode="GridFilterMode.FilterMenu"
+                                     Resizable="true"
+                                     Reorderable="true"
+                                     EditMode="GridEditMode.Popup"
+                                     Height="auto"
+                                     Sortable="true"
+                                     SortMode="@SortMode.Single"
+                                     Pageable="true"
+                                     PageSize="10"
+                                     Class="table-responsive">
+
+                            <!-- Grid Export -->
+                            <GridExport>
+                                <GridExcelExport FileName="telerik-grid-export" AllPages="@ExportAllPages" />
+                            </GridExport>
+
+                            <!-- Grid Columns -->
+                            <GridColumns>
+                                <GridCheckboxColumn></GridCheckboxColumn>
+                                @foreach (var col in typeof(Ttinvoice).GetProperties())
+                                {
+                                    <GridColumn Field="@(col.Name)" Width="120px" Title="@(col.Name)" Lockable="true" />
+                                }
+
+                                <GridCommandColumn Width="200px">
+                                    <GridCommandButton Command="Edit" Icon="@SvgIcon.Pencil" class="btn btn-sm btn-primary">Editar</GridCommandButton>
+                                    <GridCommandButton Command="Delete" Icon="@SvgIcon.Trash" class="btn btn-sm btn-danger">Eliminar</GridCommandButton>
+                                </GridCommandColumn>
+                            </GridColumns>
+
+                            <!-- Toolbar -->
+                            <GridToolBarTemplate>
+                                <GridCommandButton Command="Add" Icon="@SvgIcon.Plus" class="btn btn-primary">Agregar Factura</GridCommandButton>
+                            </GridToolBarTemplate>
+                        </TelerikGrid>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .card {
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .btn {
+        font-size: 0.875rem;
+    }
+
+    .table-responsive {
+        overflow-x: auto;
+    }
+</style>
+
+@code {
+
+    private string SearchText { get; set; } = string.Empty;
+    private List<Ttinvoice> FilteredInvoices { get; set; } = new List<Ttinvoice>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await MostrarDatos();
+    }
+
+    private TelerikGrid<Ttinvoice> GridRef { get; set; }
+
+    bool ExportAllPages { get; set; }
+
+    private MemoryStream exportedExcelStream { get; set; }
+
+    private async Task GetTheDataAsAStream()
+    {
+        MemoryStream finalizedStream = await GridRef.ExportToExcelAsync();
+
+        exportedExcelStream = new MemoryStream(finalizedStream.ToArray());
+    }
+
+    public async Task CreateHandler(GridCommandEventArgs args)
+    {
+        string baseURL = "http://192.168.10.54:8810/Ordenes/rest/DEMOOE1Service/Invoice";
+
+        var arsItem = (Ttinvoice)args.Item;
+
+        var rootObject = new Rootobject
+            {
+                dsGeneral = new Dsgeneral
+                {
+                    ttinvoice = new Ttinvoice[] { arsItem }
+                }
+            };
+
+        using (HttpClient httpClient = new HttpClient())
+        {
+            var response = await httpClient.PostAsJsonAsync(baseURL, rootObject);
+            if (response.IsSuccessStatusCode)
+            {
+                await MostrarDatos();
+            }
+        }
+    }
+
+    public async Task UpdateHandler(GridCommandEventArgs args)
+    {
+        string baseURL = "http://192.168.10.54:8810/Ordenes/rest/DEMOOE1Service/Invoice";
+
+        var arsItem = (Ttinvoice)args.Item;
+
+        var rootObject = new Rootobject
+            {
+                dsGeneral = new Dsgeneral
+                {
+                    ttinvoice = new Ttinvoice[] { arsItem }
+                }
+            };
+
+        using (HttpClient httpClient = new HttpClient())
+        {
+            var response = await httpClient.PutAsJsonAsync(baseURL, rootObject);
+            if (response.IsSuccessStatusCode)
+            {
+                await MostrarDatos();
+            }
+        }
+    }
+
+    public async Task DeleteHandler(GridCommandEventArgs args)
+    {
+        var arsItem = (Ttinvoice)args.Item;
+        int dr = arsItem.Invoicenum;
+        int dr2 = arsItem.CustNum;
+
+        string baseURL = $"http://192.168.10.54:8810/Ordenes/rest/DEMOOE1Service/Invoice?wId={dr}&wId2={dr2}";
+
+        using (HttpClient httpClient = new HttpClient())
+        {
+            var response = await httpClient.DeleteAsync(baseURL);
+            if (response.IsSuccessStatusCode)
+            {
+                await MostrarDatos();
+            }
+        }
+    }
+
+    int txtTop { get; set; } = 0;
+
+    public List<Ttinvoice> ttInvoices { get; set; }
+
+    protected async Task MostrarDatos()
+    {
+        ttInvoices = await GetInvoice(txtTop);
+        FilteredInvoices = new List<Ttinvoice>(ttInvoices);
+    }
+
+    private async Task<List<Ttinvoice>> GetInvoice(int itop)
+    {
+        List<Ttinvoice> ttInvoices = new();
+        string baseURL = "http://192.168.10.54:8810/Ordenes/rest/DEMOOE1Service/";
+
+        using (var http = new HttpClient())
+        {
+            http.BaseAddress = new Uri(baseURL);
+
+            var request1 = await http.GetAsync("Invoice");
+
+            if (request1.IsSuccessStatusCode)
+            {
+                var response = await request1.Content.ReadFromJsonAsync<Rootobject>();
+                ttInvoices = response.dsGeneral.ttinvoice.ToList();
+            }
+        }
+
+        return ttInvoices;
+    }
+
+    private void OnSearchInputChanged(ChangeEventArgs e)
+    {
+        FilteredInvoices = string.IsNullOrWhiteSpace(SearchText)
+            ? ttInvoices
+            : ttInvoices.Where(invoice => invoice.ToString().Contains(SearchText, StringComparison.OrdinalIgnoreCase)).ToList();
+    }
+}
+
+
+
+
+
